@@ -4,6 +4,8 @@ Shows your remaining **Claude subscription** usage (5-hour session + weekly) on
 the KDE Plasma 6 panel or desktop. Same data as Claude Code's status bar / the
 [claude.ai usage page](https://claude.ai/new#settings/usage).
 
+![preview](screenshots/preview.png)
+
 ## How it works
 
 A bundled script (`contents/scripts/claude-usage`) calls the undocumented
