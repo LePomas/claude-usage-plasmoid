@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# claude-usage: print Claude subscription usage as JSON.
+# Source: undocumented api.anthropic.com/api/oauth/usage — same data Claude Code's
+# status bar / `/usage` uses. Reuses Claude Code's local OAuth token (kept fresh by
+# `claude` itself; we never refresh it here).
+# Output: the endpoint JSON on success, or {"error":"..."} on failure.
+# ponytail: no token refresh — Claude Code owns that. If expired, endpoint 401s and
+# we surface it; running `claude` once renews it.
+set -uo pipefail
+
+CRED="${CLAUDE_CRED:-$HOME/.claude/.credentials.json}"
+# UA must start with claude-code/ or the endpoint drops you in a 429 bucket.
+UA="claude-code/2.1.193"
+
+err() { printf '{"error":%s}\n' "$(jq -Rn --arg m "$1" '$m')"; exit 0; }
+
+[ -r "$CRED" ] || err "no credentials file: $CRED"
+tok=$(jq -r '.claudeAiOauth.accessToken // empty' "$CRED" 2>/dev/null)
+[ -n "$tok" ] || err "no access token in credentials"
+
+resp=$(curl -sS --max-time 12 -w $'\n%{http_code}' \
+  https://api.anthropic.com/api/oauth/usage \
+  -H "Authorization: Bearer $tok" \
+  -H "anthropic-beta: oauth-2025-04-20" \
+  -H "User-Agent: $UA" \
+  -H "Content-Type: application/json" 2>/dev/null) || err "network error"
+
+code=${resp##*$'\n'}
+body=${resp%$'\n'*}
+if [ "$code" = 200 ]; then
+  printf '%s\n' "$body"
+else
+  err "http $code"
+fi

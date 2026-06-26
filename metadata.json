@@ -1,0 +1,16 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "com.omarmacario.claudeusage",
+        "Name": "Claude Usage",
+        "Description": "Remaining Claude subscription usage (5h session + weekly)",
+        "Icon": "view-statistics",
+        "Authors": [
+            { "Name": "Omar Macario" }
+        ],
+        "Category": "System Information",
+        "License": "MIT",
+        "Version": "1.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
