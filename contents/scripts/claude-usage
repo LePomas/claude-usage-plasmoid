@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # claude-usage: print Claude subscription usage as JSON.
 # Source: undocumented api.anthropic.com/api/oauth/usage — same data Claude Code's
-# status bar / `/usage` uses. Reuses Claude Code's local OAuth token (kept fresh by
-# `claude` itself; we never refresh it here).
+# status bar / `/usage` uses. On 401, attempts one silent token refresh via the
+# stored refreshToken before surfacing an error.
 # Output: the endpoint JSON on success, or {"error":"..."} on failure.
-# ponytail: no token refresh — Claude Code owns that. If expired, endpoint 401s and
-# we surface it; running `claude` once renews it.
 set -uo pipefail
 
 CRED="${CLAUDE_CRED:-$HOME/.claude/.credentials.json}"
 # UA must start with claude-code/ or the endpoint drops you in a 429 bucket.
 UA="claude-code/2.1.193"
+CLIENT_ID="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 
 err() { printf '{"error":%s}\n' "$(jq -Rn --arg m "$1" '$m')"; exit 0; }
 
@@ -18,16 +17,47 @@ err() { printf '{"error":%s}\n' "$(jq -Rn --arg m "$1" '$m')"; exit 0; }
 tok=$(jq -r '.claudeAiOauth.accessToken // empty' "$CRED" 2>/dev/null)
 [ -n "$tok" ] || err "no access token in credentials"
 
-resp=$(curl -sS --max-time 12 -w $'\n%{http_code}' \
-  https://api.anthropic.com/api/oauth/usage \
-  -H "Authorization: Bearer $tok" \
-  -H "anthropic-beta: oauth-2025-04-20" \
-  -H "User-Agent: $UA" \
-  -H "Content-Type: application/json" 2>/dev/null) || err "network error"
+call_usage() {
+  curl -sS --max-time 12 -w $'\n%{http_code}' \
+    https://api.anthropic.com/api/oauth/usage \
+    -H "Authorization: Bearer $1" \
+    -H "anthropic-beta: oauth-2025-04-20" \
+    -H "User-Agent: $UA" \
+    -H "Content-Type: application/json" 2>/dev/null
+}
 
+refresh_tok() {
+  local rt rb rc new_tok new_rt new_exp tmp
+  rt=$(jq -r '.claudeAiOauth.refreshToken // empty' "$CRED" 2>/dev/null)
+  [ -n "$rt" ] || return 1
+  rb=$(curl -sS --max-time 12 -w $'\n%{http_code}' \
+    https://platform.claude.com/v1/oauth/token \
+    -H "Content-Type: application/json" \
+    -d "{\"grant_type\":\"refresh_token\",\"refresh_token\":\"$rt\",\"client_id\":\"$CLIENT_ID\"}" 2>/dev/null) || return 1
+  rc=${rb##*$'\n'}; rb=${rb%$'\n'*}
+  [ "$rc" = "200" ] || return 1
+  new_tok=$(jq -r '.access_token // empty' <<< "$rb"); [ -n "$new_tok" ] || return 1
+  new_rt=$(jq -r '.refresh_token // empty' <<< "$rb")
+  # expires_at may be seconds or ms; >1e12 means ms already
+  new_exp=$(jq -r 'if .expires_at then (if .expires_at > 1e12 then .expires_at else .expires_at*1000 end | floor) elif .expires_in then ((now+.expires_in)*1000|floor) else ((now+3600)*1000|floor) end' <<< "$rb")
+  tmp=$(mktemp "${CRED}.XXXXXX")
+  jq --arg tok "$new_tok" --arg rt "${new_rt:-}" --argjson exp "$new_exp" \
+    '.claudeAiOauth.accessToken=$tok | .claudeAiOauth.expiresAt=$exp
+     | if $rt!="" then .claudeAiOauth.refreshToken=$rt else . end' \
+    "$CRED" > "$tmp" && mv "$tmp" "$CRED" && chmod 600 "$CRED" || { rm -f "$tmp"; return 1; }
+  tok="$new_tok"
+}
+
+resp=$(call_usage "$tok") || err "network error"
 code=${resp##*$'\n'}
 body=${resp%$'\n'*}
-if [ "$code" = 200 ]; then
+
+if [ "$code" = "401" ]; then
+  refresh_tok && resp=$(call_usage "$tok") || true
+  code=${resp##*$'\n'}; body=${resp%$'\n'*}
+fi
+
+if [ "$code" = "200" ]; then
   printf '%s\n' "$body"
 else
   err "http $code"
