@@ -19,6 +19,9 @@ jobs:
           jq -e .KPlugin.Id metadata.json
           bash -n contents/scripts/claude-usage
 
+      - name: Test
+        run: bash tests/test-claude-usage.sh
+
       - name: Build .plasmoid
         run: bash pack.sh
 

@@ -53,12 +53,16 @@ code=${resp##*$'\n'}
 body=${resp%$'\n'*}
 
 if [ "$code" = "401" ]; then
-  refresh_tok && resp=$(call_usage "$tok") || true
-  code=${resp##*$'\n'}; body=${resp%$'\n'*}
+  if refresh_tok; then
+    resp=$(call_usage "$tok") || err "network error"
+    code=${resp##*$'\n'}; body=${resp%$'\n'*}
+  fi
 fi
 
 if [ "$code" = "200" ]; then
   printf '%s\n' "$body"
+elif [ "$code" = "401" ]; then
+  err "login expired – run 'claude' to re-authenticate"
 else
   err "http $code"
 fi
