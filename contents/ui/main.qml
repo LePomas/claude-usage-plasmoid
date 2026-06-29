@@ -66,6 +66,11 @@ PlasmoidItem {
         var m = Math.floor(ms / 60000);
         var h = Math.floor(m / 60);
         m = m % 60;
+        if (h >= 24) {
+            var d = Math.floor(h / 24);
+            h = h % 24;
+            return h > 0 ? i18n("%1d %2h left", d, h) : i18n("%1d left", d);
+        }
         return h > 0 ? i18n("%1h %2m left", h, m) : i18n("%1m left", m);
     }
 
