@@ -5,6 +5,7 @@ import org.kde.plasma.components 3.0 as PlasmaComponents
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.kirigami as Kirigami
+import "labels.js" as Labels
 
 PlasmoidItem {
     id: root
@@ -32,21 +33,15 @@ PlasmoidItem {
     toolTipMainText: i18n("Claude usage")
     toolTipSubText: errorText !== "" ? i18n("Error: %1", errorText)
                                      : limits.map(function (l) {
-                                           return root.kindLabel(l.kind) + ": " + (100 - l.percent) + "% left";
+                                           return root.kindLabel(l.kind, l.scope) + ": " + (100 - l.percent) + "% left";
                                        }).join("\n")
 
-    function kindLabel(kind) {
-        switch (kind) {
-        case "session": return i18n("Session (5h)");
-        case "weekly_all": return i18n("Weekly");
-        case "weekly_opus": return i18n("Weekly · Opus");
-        case "weekly_sonnet": return i18n("Weekly · Sonnet");
-        default: return kind;
-        }
+    function kindLabel(kind, scope) {
+        return i18n(Labels.kindLabel(kind, scope));
     }
 
     function shortLabel(kind) {
-        return kind === "session" ? "5h" : "7d";
+        return Labels.shortLabel(kind);
     }
 
     function fmtReset(iso) {
@@ -203,7 +198,7 @@ PlasmoidItem {
                     RowLayout {
                         Layout.fillWidth: true
                         PlasmaComponents.Label {
-                            text: root.kindLabel(modelData.kind)
+                            text: root.kindLabel(modelData.kind, modelData.scope)
                             color: root.fgColor
                             Layout.fillWidth: true
                         }
