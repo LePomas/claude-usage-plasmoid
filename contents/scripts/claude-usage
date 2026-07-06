@@ -59,6 +59,16 @@ if [ "$code" = "401" ]; then
   fi
 fi
 
+# 502/503/504 are transient upstream blips (seen: envoy "overflow" resets); a
+# couple of short retries clear most of them before we surface an error.
+wait=1; tries=0
+while { [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "504" ]; } && [ "$tries" -lt 2 ]; do
+  sleep "$wait"
+  resp=$(call_usage "$tok") || err "network error"
+  code=${resp##*$'\n'}; body=${resp%$'\n'*}
+  tries=$((tries+1)); wait=$((wait*2))
+done
+
 if [ "$code" = "200" ]; then
   printf '%s\n' "$body"
 elif [ "$code" = "401" ]; then

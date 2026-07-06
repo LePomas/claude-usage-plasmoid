@@ -57,6 +57,22 @@ CURL
   chmod +x "$T/bin/curl"
 }
 
+# Stateful: first usage call → 503, second → 200; no token call expected.
+write_curl_503_then_ok() {
+  rm -f "$T/usage_n"
+  cat > "$T/bin/curl" <<CURL
+#!/usr/bin/env bash
+url=""; for a; do [[ "\$a" == https://* ]] && url="\$a" && break; done
+if [[ "\$url" == *"oauth/usage"* ]]; then
+  n=\$( [ -f "$T/usage_n" ] && cat "$T/usage_n" || echo 0 )
+  echo \$((n+1)) > "$T/usage_n"
+  if [ "\$n" -eq 0 ]; then printf '{}\n503'
+  else printf '{"limits":[{"kind":"session","percent":5,"severity":"normal","resets_at":"2099-01-01T00:00:00Z"}]}\n200'; fi
+fi
+CURL
+  chmod +x "$T/bin/curl"
+}
+
 run() { CLAUDE_CRED="$T/creds.json" PATH="$T/bin:$PATH" bash "$SCRIPT" 2>/dev/null; }
 
 # 1. Happy path — 200 with limits
@@ -87,10 +103,19 @@ write_curl_static; mk_cred "bad" "bad_rt"
 got=$(MOCK_USAGE_CODE=401 MOCK_USAGE_BODY='{}' MOCK_TOKEN_CODE=400 MOCK_TOKEN_BODY='{"error":"invalid_grant"}' run)
 check "401 refresh fails gives login expired" "login expired" "$got"
 
-# 7. HTTP 500 → error with code
+# 7. HTTP 500 → error with code (not retried, no artificial delay)
 write_curl_static; mk_cred
 got=$(MOCK_USAGE_CODE=500 MOCK_USAGE_BODY='{}' run)
 check "500 error mentions http code" "http 500" "$got"
+
+# 8. 503 → retried → 200 (transient upstream blip clears)
+write_curl_503_then_ok; mk_cred
+check "503 retry succeeds returns limits" '"limits"' "$(run)"
+
+# 9. 503 on every attempt → error with code, retries exhausted
+write_curl_static; mk_cred
+got=$(MOCK_USAGE_CODE=503 MOCK_USAGE_BODY='{}' run)
+check "503 exhausted retries gives error" "http 503" "$got"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
