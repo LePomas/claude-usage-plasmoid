@@ -15,7 +15,8 @@ Kirigami.FormLayout {
     QQC2.SpinBox {
         id: refresh
         Kirigami.FormData.label: i18n("Refresh every (minutes):")
-        from: 1
+        // below 5, the undocumented usage endpoint rate-limits the token for ~20min
+        from: 5
         to: 120
     }
 

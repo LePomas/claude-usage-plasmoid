@@ -25,6 +25,12 @@ jobs:
       - name: Test labels.js
         run: node tests/test-labels.js
 
+      - name: Test refresh floor
+        run: node tests/test-refresh-floor.js
+
+      - name: Test stale-data handling
+        run: node tests/test-stale-data.js
+
       - name: Build .plasmoid
         run: bash pack.sh
 

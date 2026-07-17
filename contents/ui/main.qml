@@ -31,10 +31,19 @@ PlasmoidItem {
     Plasmoid.backgroundHints: useSystemTheme ? PlasmaCore.Types.DefaultBackground
                                              : PlasmaCore.Types.NoBackground
     toolTipMainText: i18n("Claude usage")
-    toolTipSubText: errorText !== "" ? i18n("Error: %1", errorText)
-                                     : limits.map(function (l) {
-                                           return root.kindLabel(l.kind, l.scope) + ": " + (100 - l.percent) + "% left";
-                                       }).join("\n")
+    toolTipSubText: root.tooltipText()
+
+    // stale data still beats a blank widget — keep the last-known limits on
+    // the tooltip/bars and just append the error, instead of hiding them.
+    function tooltipText() {
+        var lines = limits.map(function (l) {
+            return root.kindLabel(l.kind, l.scope) + ": " + (100 - l.percent) + "% left";
+        });
+        if (errorText !== "") {
+            lines.push(lines.length > 0 ? i18n("⚠ stale — %1", errorText) : i18n("Error: %1", errorText));
+        }
+        return lines.join("\n");
+    }
 
     function kindLabel(kind, scope) {
         return i18n(Labels.kindLabel(kind, scope));
@@ -96,14 +105,13 @@ PlasmoidItem {
                 var j = JSON.parse(out);
                 if (j.error) {
                     root.errorText = j.error;
-                    root.limits = [];
+                    // keep the last-known limits (below) — stale beats blank
                 } else {
                     root.errorText = "";
                     root.limits = j.limits || [];
                 }
             } catch (e) {
                 root.errorText = i18n("bad output");
-                root.limits = [];
             }
             root.loaded = true;
         }
@@ -116,7 +124,8 @@ PlasmoidItem {
     }
 
     Timer {
-        interval: Math.max(1, Plasmoid.configuration.refreshMinutes) * 60000
+        // floor of 5: below that the usage endpoint rate-limits the token for ~20min
+        interval: Math.max(5, Plasmoid.configuration.refreshMinutes) * 60000
         running: true
         repeat: true
         triggeredOnStart: true
@@ -183,7 +192,8 @@ PlasmoidItem {
 
             PlasmaComponents.Label {
                 visible: root.errorText !== ""
-                text: i18n("Error: %1", root.errorText)
+                text: root.limits.length > 0 ? i18n("⚠ stale, last update failed: %1", root.errorText)
+                                              : i18n("Error: %1", root.errorText)
                 color: Kirigami.Theme.negativeTextColor
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true

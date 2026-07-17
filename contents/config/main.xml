@@ -7,6 +7,8 @@
   <group name="General">
     <entry name="refreshMinutes" type="Int">
       <default>5</default>
+      <min>5</min>
+      <max>120</max>
     </entry>
     <entry name="showCountdown" type="Bool">
       <default>false</default>
