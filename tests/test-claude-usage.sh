@@ -73,7 +73,40 @@ CURL
   chmod +x "$T/bin/curl"
 }
 
-run() { CLAUDE_CRED="$T/creds.json" PATH="$T/bin:$PATH" bash "$SCRIPT" 2>/dev/null; }
+# Stateful: first usage call → 401, second → 200; for the cli-refresh fallback
+# (own refresh_tok is skipped — creds carry no refreshToken).
+write_curl_401_then_ok_no_rt() {
+  rm -f "$T/usage_n"
+  cat > "$T/bin/curl" <<CURL
+#!/usr/bin/env bash
+url=""; for a; do [[ "\$a" == https://* ]] && url="\$a" && break; done
+if [[ "\$url" == *"oauth/usage"* ]]; then
+  n=\$( [ -f "$T/usage_n" ] && cat "$T/usage_n" || echo 0 )
+  echo \$((n+1)) > "$T/usage_n"
+  if [ "\$n" -eq 0 ]; then printf '{}\n401'
+  else printf '{"limits":[{"kind":"session","percent":5,"severity":"normal","resets_at":"2099-01-01T00:00:00Z"}]}\n200'; fi
+fi
+CURL
+  chmod +x "$T/bin/curl"
+}
+
+run() { CLAUDE_CRED="$T/creds.json" CLAUDE_USAGE_NO_CLI_REFRESH=1 PATH="$T/bin:$PATH" bash "$SCRIPT" 2>/dev/null; }
+
+# Fake `claude` binary: `auth status --json` rewrites creds.json with a fresh
+# token, simulating the real CLI's own silent refresh.
+write_claude_cli_refresh_ok() {
+  cat > "$T/bin/claude" <<CLAUDE
+#!/usr/bin/env bash
+if [ "\$1" = "auth" ] && [ "\$2" = "status" ]; then
+  cat > "$T/creds.json" <<JSON
+{"claudeAiOauth":{"accessToken":"cli_refreshed_tok","refreshToken":"rt","expiresAt":9999999999000}}
+JSON
+  printf '{"loggedIn":true}\n'
+fi
+CLAUDE
+  chmod +x "$T/bin/claude"
+}
+run_with_cli_refresh() { CLAUDE_CRED="$T/creds.json" PATH="$T/bin:$PATH" bash "$SCRIPT" 2>/dev/null; }
 
 # 1. Happy path — 200 with limits
 write_curl_static; mk_cred
@@ -116,6 +149,11 @@ check "503 retry succeeds returns limits" '"limits"' "$(run)"
 write_curl_static; mk_cred
 got=$(MOCK_USAGE_CODE=503 MOCK_USAGE_BODY='{}' run)
 check "503 exhausted retries gives error" "http 503" "$got"
+
+# 10. 401 + no refresh token → `claude auth status` cli-refresh fixes it → 200
+write_curl_401_then_ok_no_rt; write_claude_cli_refresh_ok
+printf '{"claudeAiOauth":{"accessToken":"bad","expiresAt":9999}}' > "$T/creds.json"
+check "401 cli-refresh fallback returns limits" '"limits"' "$(run_with_cli_refresh)"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

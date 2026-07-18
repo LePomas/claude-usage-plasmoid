@@ -2,7 +2,8 @@
 # claude-usage: print Claude subscription usage as JSON.
 # Source: undocumented api.anthropic.com/api/oauth/usage — same data Claude Code's
 # status bar / `/usage` uses. On 401, attempts one silent token refresh via the
-# stored refreshToken before surfacing an error.
+# stored refreshToken, then falls back to `claude auth status` (headless, no
+# window) before surfacing an error.
 # Output: the endpoint JSON on success, or {"error":"..."} on failure.
 set -uo pipefail
 
@@ -54,6 +55,20 @@ body=${resp%$'\n'*}
 
 if [ "$code" = "401" ]; then
   if refresh_tok; then
+    resp=$(call_usage "$tok") || err "network error"
+    code=${resp##*$'\n'}; body=${resp%$'\n'*}
+  fi
+fi
+
+# Our own refresh failed (or no refresh token on file). `claude` itself keeps
+# the token fresh via the same endpoint on every invocation, and `auth status`
+# is headless — no window, no TTY prompt, no API tokens spent — so try it as
+# a second chance before giving up. CLAUDE_USAGE_NO_CLI_REFRESH escapes this
+# for tests / environments without a real `claude` login.
+if [ "$code" = "401" ] && [ -z "${CLAUDE_USAGE_NO_CLI_REFRESH:-}" ] && command -v claude >/dev/null 2>&1; then
+  timeout 15 claude auth status --json >/dev/null 2>&1 || true
+  tok=$(jq -r '.claudeAiOauth.accessToken // empty' "$CRED" 2>/dev/null)
+  if [ -n "$tok" ]; then
     resp=$(call_usage "$tok") || err "network error"
     code=${resp##*$'\n'}; body=${resp%$'\n'*}
   fi
