@@ -54,6 +54,7 @@ PlasmoidItem {
     }
 
     function fmtReset(iso) {
+        if (!iso) return "";
         var d = new Date(iso);
         if (isNaN(d.getTime())) return "";
         var now = new Date();
@@ -64,6 +65,7 @@ PlasmoidItem {
     }
 
     function fmtCountdown(iso) {
+        if (!iso) return "";
         var ms = new Date(iso).getTime() - Date.now();
         if (isNaN(ms)) return "";
         if (ms <= 0) return i18n("resetting…");
