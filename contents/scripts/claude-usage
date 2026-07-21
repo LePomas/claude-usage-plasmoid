@@ -18,6 +18,15 @@ err() { printf '{"error":%s}\n' "$(jq -Rn --arg m "$1" '$m')"; exit 0; }
 tok=$(jq -r '.claudeAiOauth.accessToken // empty' "$CRED" 2>/dev/null)
 [ -n "$tok" ] || err "no access token in credentials"
 
+# If token is known-expired, skip the usage call and go straight to refresh.
+# Avoids a wasted 401 that contributes to rate-limit pressure.
+exp_ms=$(jq -r '.claudeAiOauth.expiresAt // 0' "$CRED" 2>/dev/null)
+now_ms=$(date +%s%3N 2>/dev/null || echo 0)
+token_expired=false
+if [ "$exp_ms" -gt 0 ] 2>/dev/null && [ "$now_ms" -gt 0 ] 2>/dev/null && [ "$now_ms" -gt "$exp_ms" ]; then
+  token_expired=true
+fi
+
 call_usage() {
   curl -sS --max-time 12 -w $'\n%{http_code}' \
     https://api.anthropic.com/api/oauth/usage \
@@ -36,6 +45,8 @@ refresh_tok() {
     -H "Content-Type: application/json" \
     -d "{\"grant_type\":\"refresh_token\",\"refresh_token\":\"$rt\",\"client_id\":\"$CLIENT_ID\"}" 2>/dev/null) || return 1
   rc=${rb##*$'\n'}; rb=${rb%$'\n'*}
+  # 429 = rate-limited; return 2 so caller can distinguish from other failures
+  [ "$rc" = "429" ] && return 2
   [ "$rc" = "200" ] || return 1
   new_tok=$(jq -r '.access_token // empty' <<< "$rb"); [ -n "$new_tok" ] || return 1
   new_rt=$(jq -r '.refresh_token // empty' <<< "$rb")
@@ -49,15 +60,21 @@ refresh_tok() {
   tok="$new_tok"
 }
 
-resp=$(call_usage "$tok") || err "network error"
-code=${resp##*$'\n'}
-body=${resp%$'\n'*}
+if [ "$token_expired" = true ]; then
+  # Token known-expired — skip straight to refresh, no point hitting usage first.
+  code="401"; body=""
+else
+  resp=$(call_usage "$tok") || err "network error"
+  code=${resp##*$'\n'}; body=${resp%$'\n'*}
+fi
 
 if [ "$code" = "401" ]; then
-  if refresh_tok; then
+  refresh_tok; refresh_rc=$?
+  if [ "$refresh_rc" -eq 0 ]; then
     resp=$(call_usage "$tok") || err "network error"
     code=${resp##*$'\n'}; body=${resp%$'\n'*}
   fi
+  # refresh_rc=2 (429) or 1 (other failure): fall through to CLI fallback, don't retry usage
 fi
 
 # Our own refresh failed (or no refresh token on file). `claude` itself keeps

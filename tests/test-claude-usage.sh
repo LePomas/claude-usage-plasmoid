@@ -152,7 +152,7 @@ check "503 exhausted retries gives error" "http 503" "$got"
 
 # 10. 401 + no refresh token → `claude auth status` cli-refresh fixes it → 200
 write_curl_401_then_ok_no_rt; write_claude_cli_refresh_ok
-printf '{"claudeAiOauth":{"accessToken":"bad","expiresAt":9999}}' > "$T/creds.json"
+printf '{"claudeAiOauth":{"accessToken":"bad","expiresAt":9999999999000}}' > "$T/creds.json"
 check "401 cli-refresh fallback returns limits" '"limits"' "$(run_with_cli_refresh)"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
