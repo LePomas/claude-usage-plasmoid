@@ -3,7 +3,7 @@
 // Bug: API added kind "weekly_scoped" (a per-model weekly bucket, e.g. scope.model.display_name)
 // which had no switch case, so the raw enum leaked into the widget as-is.
 const path = require("path");
-const { kindLabel, shortLabel } = require(path.join(__dirname, "..", "contents", "ui", "labels.js"));
+const { kindLabel, shortLabel, fmtCredits, fmtCreditsShort } = require(path.join(__dirname, "..", "contents", "ui", "labels.js"));
 
 let pass = 0, fail = 0;
 function check(name, got, want) {
@@ -25,6 +25,10 @@ check("unrecognized kind is humanized, not leaked raw", kindLabel("some_new_kind
 check("shortLabel session", shortLabel("session"), "5h");
 check("shortLabel weekly kinds", shortLabel("weekly_all"), "7d");
 check("shortLabel weekly_scoped", shortLabel("weekly_scoped"), "7d");
+check("credits label", kindLabel("credits"), "Usage Credits");
+check("fmtCredits cents", fmtCredits(219, 10000, 2), "$2.19 / $100.00");
+check("fmtCredits default exponent", fmtCredits(500, 1000), "$5.00 / $10.00");
+check("fmtCreditsShort cents", fmtCreditsShort(219, 2), "$2.19");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

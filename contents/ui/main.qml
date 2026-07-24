@@ -37,7 +37,8 @@ PlasmoidItem {
     // the tooltip/bars and just append the error, instead of hiding them.
     function tooltipText() {
         var lines = limits.map(function (l) {
-            return root.kindLabel(l.kind, l.scope) + ": " + (100 - l.percent) + "% left";
+            var val = l.kind === "credits" ? root.fmtCredits(l) : (100 - l.percent) + "% left";
+            return root.kindLabel(l.kind, l.scope) + ": " + val;
         });
         if (errorText !== "") {
             lines.push(lines.length > 0 ? i18n("⚠ stale — %1", errorText) : i18n("Error: %1", errorText));
@@ -51,6 +52,14 @@ PlasmoidItem {
 
     function shortLabel(kind) {
         return Labels.shortLabel(kind);
+    }
+
+    function fmtCredits(l) {
+        return Labels.fmtCredits(l.used_minor, l.limit_minor, l.exponent);
+    }
+
+    function fmtCreditsShort(l) {
+        return Labels.fmtCreditsShort(l.used_minor, l.exponent);
     }
 
     function fmtReset(iso) {
@@ -110,7 +119,17 @@ PlasmoidItem {
                     // keep the last-known limits (below) — stale beats blank
                 } else {
                     root.errorText = "";
-                    root.limits = j.limits || [];
+                    var limits = j.limits || [];
+                    var spend = j.spend;
+                    if (spend && spend.enabled && spend.used && spend.limit) {
+                        limits = limits.concat([{
+                            kind: "credits", percent: spend.percent, severity: spend.severity,
+                            resets_at: null, scope: null,
+                            used_minor: spend.used.amount_minor, limit_minor: spend.limit.amount_minor,
+                            exponent: spend.used.exponent
+                        }]);
+                    }
+                    root.limits = limits;
                 }
             } catch (e) {
                 root.errorText = i18n("bad output");
@@ -153,7 +172,9 @@ PlasmoidItem {
             Repeater {
                 model: root.limits
                 PlasmaComponents.Label {
-                    text: root.shortLabel(modelData.kind) + " " + (100 - modelData.percent) + "%"
+                    text: modelData.kind === "credits"
+                        ? root.fmtCreditsShort(modelData)
+                        : root.shortLabel(modelData.kind) + " " + (100 - modelData.percent) + "%"
                     color: modelData.severity === "normal" ? Kirigami.Theme.textColor
                                                            : Kirigami.Theme.negativeTextColor
                 }
@@ -215,7 +236,8 @@ PlasmoidItem {
                             Layout.fillWidth: true
                         }
                         PlasmaComponents.Label {
-                            text: i18n("%1% left", 100 - modelData.percent)
+                            text: modelData.kind === "credits" ? root.fmtCredits(modelData)
+                                                                : i18n("%1% left", 100 - modelData.percent)
                             font.bold: true
                             color: root.barColor(modelData.severity)
                         }

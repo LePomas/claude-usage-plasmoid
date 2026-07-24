@@ -13,6 +13,7 @@ function kindLabel(kind, scope) {
     case "weekly_scoped":
         var model = scope && scope.model && scope.model.display_name;
         return model ? "Weekly · " + model : "Weekly (scoped)";
+    case "credits": return "Usage Credits";
     default: return humanize(kind);
     }
 }
@@ -21,6 +22,21 @@ function shortLabel(kind) {
     return kind === "session" ? "5h" : "7d";
 }
 
+// spend.used/limit are { amount_minor, exponent } — exponent 2 means cents.
+function fmtCredits(used_minor, limit_minor, exponent) {
+    var div = Math.pow(10, exponent || 2);
+    return "$" + (used_minor / div).toFixed(2) + " / $" + (limit_minor / div).toFixed(2);
+}
+
+// compact-panel chip: just the amount spent, no cap — keeps the chip short.
+function fmtCreditsShort(used_minor, exponent) {
+    var div = Math.pow(10, exponent || 2);
+    return "$" + (used_minor / div).toFixed(2);
+}
+
 if (typeof module !== "undefined") {
-    module.exports = { kindLabel: kindLabel, shortLabel: shortLabel, humanize: humanize };
+    module.exports = {
+        kindLabel: kindLabel, shortLabel: shortLabel, humanize: humanize,
+        fmtCredits: fmtCredits, fmtCreditsShort: fmtCreditsShort
+    };
 }
