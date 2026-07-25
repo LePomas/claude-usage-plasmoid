@@ -11,6 +11,7 @@ Kirigami.FormLayout {
     property alias cfg_bgColor: bgColor.color
     property alias cfg_cornerRadius: radius.value
     property alias cfg_enableShadow: shadow.checked
+    property alias cfg_autoFitHeight: autoFit.checked
 
     QQC2.SpinBox {
         id: refresh
@@ -60,5 +61,18 @@ Kirigami.FormLayout {
         Kirigami.FormData.label: i18n("Shadow:")
         text: i18n("Enable shadow")
         enabled: !systemTheme.checked
+    }
+
+    Item { Kirigami.FormData.isSection: true }
+
+    QQC2.CheckBox {
+        id: autoFit
+        Kirigami.FormData.label: i18n("Sizing:")
+        text: i18n("Auto-adjust height to content")
+    }
+    QQC2.Label {
+        text: i18n("When off, widget height stays fixed and content scrolls instead.")
+        opacity: 0.7
+        font: Kirigami.Theme.smallFont
     }
 }

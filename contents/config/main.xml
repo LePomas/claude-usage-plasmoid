@@ -29,5 +29,8 @@
     <entry name="enableShadow" type="Bool">
       <default>true</default>
     </entry>
+    <entry name="autoFitHeight" type="Bool">
+      <default>true</default>
+    </entry>
   </group>
 </kcfg>

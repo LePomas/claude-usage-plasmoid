@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls as QQC2
 import org.kde.plasma.plasmoid
 import org.kde.plasma.components 3.0 as PlasmaComponents
 import org.kde.plasma.core as PlasmaCore
@@ -21,6 +22,7 @@ PlasmoidItem {
     readonly property bool enableShadow: Plasmoid.configuration.enableShadow
     readonly property int barStyle: Plasmoid.configuration.barStyle
     readonly property bool showCountdown: Plasmoid.configuration.showCountdown
+    readonly property bool autoFitHeight: Plasmoid.configuration.autoFitHeight
     readonly property color claudeColor: "#D97757"
 
     // text legible on the chosen solid background (or theme default)
@@ -188,8 +190,17 @@ PlasmoidItem {
     }
 
     fullRepresentation: Item {
+        id: fullRep
         Layout.minimumWidth: Kirigami.Units.gridUnit * 15
         Layout.minimumHeight: Kirigami.Units.gridUnit * 8
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 15
+        // auto-fit: frame grows/shrinks to fit content (no scrolling needed).
+        // fixed: frame stays at the minimum and overflow scrolls instead —
+        // either way content is clipped by the Flickable below, so it can
+        // never render outside the card background.
+        Layout.preferredHeight: root.autoFitHeight
+            ? Math.max(Layout.minimumHeight, contentColumn.implicitHeight + Kirigami.Units.largeSpacing * 2)
+            : Layout.minimumHeight
 
         // stock-monitor-style card: solid color + rounded corners + shadow
         Kirigami.ShadowedRectangle {
@@ -202,73 +213,86 @@ PlasmoidItem {
             shadow.color: Qt.rgba(0, 0, 0, 0.45)
         }
 
-        ColumnLayout {
+        Flickable {
+            id: scrollArea
             anchors.fill: parent
             anchors.margins: Kirigami.Units.largeSpacing
-            spacing: Kirigami.Units.smallSpacing
+            clip: true
+            interactive: !root.autoFitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            contentWidth: width
+            contentHeight: contentColumn.implicitHeight
 
-            Kirigami.Heading {
-                text: i18n("Claude usage")
-                level: 3
-                color: root.fgColor
+            QQC2.ScrollBar.vertical: QQC2.ScrollBar {
+                policy: root.autoFitHeight ? QQC2.ScrollBar.AlwaysOff : QQC2.ScrollBar.AsNeeded
             }
 
-            PlasmaComponents.Label {
-                visible: root.errorText !== ""
-                text: root.limits.length > 0 ? i18n("⚠ stale, last update failed: %1", root.errorText)
-                                              : i18n("Error: %1", root.errorText)
-                color: Kirigami.Theme.negativeTextColor
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
+            ColumnLayout {
+                id: contentColumn
+                width: scrollArea.width
+                spacing: Kirigami.Units.smallSpacing
 
-            Repeater {
-                model: root.limits
-                ColumnLayout {
+                Kirigami.Heading {
+                    text: i18n("Claude usage")
+                    level: 3
+                    color: root.fgColor
+                }
+
+                PlasmaComponents.Label {
+                    visible: root.errorText !== ""
+                    text: root.limits.length > 0 ? i18n("⚠ stale, last update failed: %1", root.errorText)
+                                                  : i18n("Error: %1", root.errorText)
+                    color: Kirigami.Theme.negativeTextColor
+                    wrapMode: Text.WordWrap
                     Layout.fillWidth: true
-                    spacing: 0
+                }
 
-                    RowLayout {
+                Repeater {
+                    model: root.limits
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        PlasmaComponents.Label {
-                            text: root.kindLabel(modelData.kind, modelData.scope)
-                            color: root.fgColor
+                        spacing: 0
+
+                        RowLayout {
                             Layout.fillWidth: true
+                            PlasmaComponents.Label {
+                                text: root.kindLabel(modelData.kind, modelData.scope)
+                                color: root.fgColor
+                                Layout.fillWidth: true
+                            }
+                            PlasmaComponents.Label {
+                                text: modelData.kind === "credits" ? root.fmtCredits(modelData)
+                                                                    : i18n("%1% left", 100 - modelData.percent)
+                                font.bold: true
+                                color: root.barColor(modelData.severity)
+                            }
                         }
-                        PlasmaComponents.Label {
-                            text: modelData.kind === "credits" ? root.fmtCredits(modelData)
-                                                                : i18n("%1% left", 100 - modelData.percent)
-                            font.bold: true
-                            color: root.barColor(modelData.severity)
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.topMargin: Kirigami.Units.smallSpacing / 2
-                        Layout.bottomMargin: Kirigami.Units.smallSpacing / 2
-                        implicitHeight: Kirigami.Units.gridUnit * 0.4
-                        radius: height / 2
-                        color: Qt.rgba(root.fgColor.r, root.fgColor.g, root.fgColor.b, 0.15)
 
                         Rectangle {
-                            width: parent.width * Math.max(0, 100 - modelData.percent) / 100
-                            height: parent.height
+                            Layout.fillWidth: true
+                            Layout.topMargin: Kirigami.Units.smallSpacing / 2
+                            Layout.bottomMargin: Kirigami.Units.smallSpacing / 2
+                            implicitHeight: Kirigami.Units.gridUnit * 0.4
                             radius: height / 2
-                            color: root.barColor(modelData.severity)
-                        }
-                    }
+                            color: Qt.rgba(root.fgColor.r, root.fgColor.g, root.fgColor.b, 0.15)
 
-                    PlasmaComponents.Label {
-                        text: (root.tick, root.resetText(modelData.resets_at))
-                        color: root.fgColor
-                        opacity: 0.7
-                        font: Kirigami.Theme.smallFont
+                            Rectangle {
+                                width: parent.width * Math.max(0, 100 - modelData.percent) / 100
+                                height: parent.height
+                                radius: height / 2
+                                color: root.barColor(modelData.severity)
+                            }
+                        }
+
+                        PlasmaComponents.Label {
+                            text: (root.tick, root.resetText(modelData.resets_at))
+                            color: root.fgColor
+                            opacity: 0.7
+                            font: Kirigami.Theme.smallFont
+                        }
                     }
                 }
             }
-
-            Item { Layout.fillHeight: true }
         }
     }
 }
