@@ -16,7 +16,7 @@ PlasmoidItem {
     property bool loaded: false
     property int tick: 0   // bumped each minute so countdowns re-evaluate
     property double startTime: Date.now()
-    property bool bootRetried: false
+    readonly property int bootRetryWindowMs: 90000
 
     readonly property bool useSystemTheme: Plasmoid.configuration.useSystemTheme
     readonly property color bgColor: Plasmoid.configuration.bgColor
@@ -120,17 +120,19 @@ PlasmoidItem {
                 var j = JSON.parse(out);
                 if (j.error) {
                     // Plasma restores widgets before network/keyring are up, so
-                    // the first login-expired hit right after login is often a
-                    // boot race, not a real expiry — retry once before surfacing it.
-                    if (j.error.indexOf("login expired") !== -1 && !root.bootRetried
-                        && (Date.now() - root.startTime) < 60000) {
-                        root.bootRetried = true;
-                        bootRetryTimer.start();
+                    // the first login-expired hit(s) right after login are often
+                    // a boot race, not a real expiry — keep retrying every 10s
+                    // until it clears or the window passes, then surface it.
+                    if (j.error.indexOf("login expired") !== -1
+                        && (Date.now() - root.startTime) < root.bootRetryWindowMs) {
+                        if (!bootRetryTimer.running) bootRetryTimer.start();
                         return;
                     }
+                    bootRetryTimer.stop();
                     root.errorText = j.error;
                     // keep the last-known limits (below) — stale beats blank
                 } else {
+                    bootRetryTimer.stop();
                     root.errorText = "";
                     var limits = j.limits || [];
                     var spend = j.spend;
@@ -168,9 +170,15 @@ PlasmoidItem {
 
     Timer {
         id: bootRetryTimer
-        interval: 15000
-        repeat: false
-        onTriggered: usage.refresh()
+        interval: 10000
+        repeat: true
+        onTriggered: {
+            if ((Date.now() - root.startTime) >= root.bootRetryWindowMs) {
+                bootRetryTimer.stop();
+                return;
+            }
+            usage.refresh();
+        }
     }
 
     Timer {
